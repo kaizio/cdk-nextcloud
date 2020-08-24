@@ -23,31 +23,12 @@ class NextcloudStack(core.Stack):
             vpc = my_vpc
         )
 
-        # #Add Instances to the cluster
-        # my_cluster.add_capacity("DefaultAutoScalingGroupCapacity",
-        #     instance_type = ec2.InstanceType("t2.xlarge"),
-        #     desired_capacity = 1,
-        #     vpc_subnets = ec2.SubnetSelection(
-        #         subnet_type = ec2.SubnetType.PUBLIC
-        #     )
-        # )
-        
-        # my_cluster.connections.allow_from_any_ipv4(
-        #     port_range = ec2.Port.tcp(port = 80)
-        # )
-
         #Create TaskDef for NextCloud Workload
         nextcloud_taskdef = ecs.TaskDefinition(self, "TaskDef",
             compatibility = ecs.Compatibility.EC2_AND_FARGATE,
             cpu = "256",
             memory_mib = "512"
         )
-        
-        # # Create TaskDef for NextCloud Workload
-        # nextcloud_taskdef = ecs.FargateTaskDefinition(self, "TaskDef",
-        #     cpu = 256,
-        #     memory_limit_mib = 512
-        # )
 
         # Add the NextCloud container to the TaskDef
         nc_web_container = nextcloud_taskdef.add_container("DefaultContainer",
@@ -65,8 +46,6 @@ class NextcloudStack(core.Stack):
         nc_sg = ec2.SecurityGroup(self, "NC_ECS_Service", vpc = my_vpc)
         nc_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80))
         efs_filesystem.connections.allow_default_port_from(nc_sg.connections)
-        # efs_filesystem.connections.allow_default_port_from(my_cluster.connections)
-        # efs_ap = efs_filesystem.add_access_point("access_point")
 
         # Add EFS Volume to TaskDef
         nextcloud_taskdef.add_volume(name = "mydatavolume",
@@ -91,12 +70,6 @@ class NextcloudStack(core.Stack):
                 host_port = 80
             )
         )
-
-        # # Create Service off of NextCloud TaskDef
-        # ecs_service = ecs.Ec2Service(self, "Service",
-        #     cluster = my_cluster,
-        #     task_definition = nextcloud_taskdef
-        # )
         
         ecs_fargate_service = ecs.FargateService(self, "Service",
             cluster = my_cluster,
