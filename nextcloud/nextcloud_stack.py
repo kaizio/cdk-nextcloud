@@ -6,6 +6,10 @@ from aws_cdk import (
     aws_ecs as ecs,
     aws_ec2 as ec2,
     aws_efs as efs,
+    aws_rds as rds,
+    aws_logs as logs,
+    aws_ecs_patterns as ecs_patterns,
+    aws_secretsmanager as secretsmanager,
     core
 )
 
@@ -22,31 +26,53 @@ class NextcloudStack(core.Stack):
         my_cluster = ecs.Cluster(self, "Cluster",
             vpc = my_vpc
         )
+        
+        db_cluster = rds.DatabaseCluster(self, "Database",
+            engine = rds.DatabaseClusterEngine.aurora_postgres(
+                version = rds.AuroraPostgresEngineVersion.VER_10_7
+            ),
+            master_user = rds.Login(
+                username = "clusteradmin",
+            ),
+            instance_props = rds.InstanceProps(
+                vpc = my_vpc
+            ),
+            instances = 1, #Set to one to remove after
+            removal_policy = core.RemovalPolicy.DESTROY
+        )
+        
+        #Set properties for serverless, as not supported in construct yet.
+        cfn_cluster = db_cluster.node.default_child
+        cfn_cluster.add_property_override("EngineMode", "serverless")
+        cfn_cluster.add_property_override("ScalingConfiguration", { 
+            'AutoPause': True, 
+            'MaxCapacity': 4, 
+            'MinCapacity': 2, 
+            'SecondsUntilAutoPause': 600
+        }) 
+        db_cluster.node.try_remove_child('Instance1') # Remove 'Server' instance that isn't required for serverless Aurora
 
         #Create TaskDef for NextCloud Workload
         nextcloud_taskdef = ecs.TaskDefinition(self, "TaskDef",
             compatibility = ecs.Compatibility.EC2_AND_FARGATE,
-            cpu = "256",
-            memory_mib = "512"
+            cpu = "512",
+            memory_mib = "1024"
         )
 
         # Add the NextCloud container to the TaskDef
         nc_web_container = nextcloud_taskdef.add_container("DefaultContainer",
             image = ecs.ContainerImage.from_registry(name = "nextcloud"),
-            memory_limit_mib=512
+            memory_limit_mib=512,
+            logging = ecs.LogDrivers.aws_logs(
+              stream_prefix="EventData",
+              log_retention = logs.RetentionDays.FIVE_DAYS
+            )
         )
-
         # Create EFS Filesystem
         efs_filesystem = efs.FileSystem(self, "EfsFileSystem",
             vpc = my_vpc,
             removal_policy = core.RemovalPolicy.DESTROY
         )
-        
-        # Allow Cluster instances to access efs.
-        nc_sg = ec2.SecurityGroup(self, "NC_ECS_Service", vpc = my_vpc)
-        nc_sg.add_ingress_rule(ec2.Peer.any_ipv4(), ec2.Port.tcp(80))
-        efs_filesystem.connections.allow_default_port_from(nc_sg.connections)
-
         # Add EFS Volume to TaskDef
         nextcloud_taskdef.add_volume(name = "mydatavolume",
             efs_volume_configuration = ecs.EfsVolumeConfiguration(
@@ -54,7 +80,6 @@ class NextcloudStack(core.Stack):
                 # access point not yet supported
             )
         )
-
         # Mount EFS Volume to NextCloud Container
         nc_web_container.add_mount_points(
             ecs.MountPoint(
@@ -71,11 +96,24 @@ class NextcloudStack(core.Stack):
             )
         )
         
-        ecs_fargate_service = ecs.FargateService(self, "Service",
-            cluster = my_cluster,
-            task_definition = nextcloud_taskdef,
-            desired_count = 1,
-            platform_version = ecs.FargatePlatformVersion.VERSION1_4,
-            security_group = nc_sg,
-            assign_public_ip = True
+        ecs_fargate_service = ecs_patterns.ApplicationLoadBalancedFargateService(
+          self, "Service"
+        )
+        
+        # ecs_fargate_service = ecs.FargateService(self, "Service",
+        #     cluster = my_cluster,
+        #     task_definition = nextcloud_taskdef,
+        #     desired_count = 1,
+        #     platform_version = ecs.FargatePlatformVersion.VERSION1_4,
+        #     assign_public_ip = True
+        # )
+        
+        db_cluster.connections.allow_default_port_from(
+          ecs_fargate_service.connections
+        )
+        efs_filesystem.connections.allow_default_port_from(
+          ecs_fargate_service.connections
+        )
+        ecs_fargate_service.connections.allow_from_any_ipv4(
+          port_range = ec2.Port.tcp(80)
         )

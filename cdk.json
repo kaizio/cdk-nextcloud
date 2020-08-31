@@ -3,5 +3,6 @@
   "context": {
     "@aws-cdk/core:enableStackNameDuplicates": "true",
     "aws-cdk:enableDiffNoFail": "true"
-  }
+  },
+  "plugin": ["cdk-assume-role-credential-plugin"]
 }
