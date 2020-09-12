@@ -35,7 +35,8 @@ setuptools.setup(
 		"aws_cdk.aws_rds>=1",
 		"aws_cdk.aws_logs>=1",
 		"aws_cdk.aws_ecs_patterns>=1",
-		"aws_cdk.aws_secretsmanager>=1"
+		"aws_cdk.aws_secretsmanager>=1",
+		"aws_cdk.aws_codebuild>=1"
     ],
 
     python_requires=">=3.6",
