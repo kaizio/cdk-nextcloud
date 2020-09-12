@@ -9,7 +9,8 @@ from nextcloud.dockersync_stack import DockerSyncStack
 
 app = core.App()
 dockerstack = DockerSyncStack(app, "dockersync", env={'region': 'us-west-2'})
-nextcloud = NextcloudStack(app, "nextcloud", ecr_repo = dockerstack.ecr_repo, env={'region': 'us-west-2'})
+nextcloud = NextcloudStack(
+    app, "nextcloud", ecr_repo=dockerstack.ecr_repo, env={'region': 'us-west-2'})
 
 # NextcloudStack(app, "kaiz-nc", env = core.Environment(self, account = ))
 
